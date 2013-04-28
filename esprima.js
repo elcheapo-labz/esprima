@@ -71,6 +71,8 @@ parseStatement: true, parseSourceElement: true */
         lookahead,
         state,
         extra;
+    
+    var Types = {};
 
     Token = {
         BooleanLiteral: 1,
@@ -145,6 +147,7 @@ parseStatement: true, parseSourceElement: true */
         UnaryExpression: 'UnaryExpression',
         UpdateExpression: 'UpdateExpression',
         VariableDeclaration: 'VariableDeclaration',
+        CompositeDeclaration: 'CompositeDeclaration',
         VariableDeclarator: 'VariableDeclarator',
         WhileStatement: 'WhileStatement',
         WithStatement: 'WithStatement'
@@ -302,12 +305,12 @@ parseStatement: true, parseSourceElement: true */
         if (strict && isStrictModeReservedWord(id)) {
             return true;
         }
-
+		if(Types[id] != undefined)
+				return true;
         // 'const' is specialized as Keyword in V8.
         // 'yield' and 'let' are for compatiblity with SpiderMonkey and ES.next.
         // Some others are from future reserved words.
-
-        switch (id.length) {
+       switch (id.length) {
         case 2:
             return (id === 'if') || (id === 'in') || (id === 'do') || (id === 'u8') || (id === 's8');
         case 3:
@@ -331,7 +334,7 @@ parseStatement: true, parseSourceElement: true */
         case 10:
             return (id === 'instanceof');
         default:
-            return false;
+			return false;
         }
     }
 
@@ -1318,7 +1321,8 @@ parseStatement: true, parseSourceElement: true */
             };
         },
          createStructDeclaration: function (id, params, defaults, body) {
-            return {
+			Types[id.name]=body;
+			return {
                 type: Syntax.StructDeclaration,
                 id: id,
                 params: params,
@@ -1493,9 +1497,9 @@ parseStatement: true, parseSourceElement: true */
             };
         },
 
-        createVariableDeclaration: function (declarations, kind) {
+        createVariableDeclaration: function (declarations, kind, isStruct) {
             return {
-                type: Syntax.VariableDeclaration,
+                type: isStruct ? Syntax.CompositeDeclaration: Syntax.VariableDeclaration,
                 declarations: declarations,
                 kind: kind
             };
@@ -2382,7 +2386,7 @@ parseStatement: true, parseSourceElement: true */
         return delegate.createVariableDeclaration(declarations, 'var');
     }
     
-    function parseTypedStatement(type) {
+    function parseTypedStatement(type,isStruct) {
         var declarations;
 
         expectKeyword(type);
@@ -2391,7 +2395,7 @@ parseStatement: true, parseSourceElement: true */
 
         consumeSemicolon();
 
-        return delegate.createVariableDeclaration(declarations, type);
+        return delegate.createVariableDeclaration(declarations, type, isStruct);
     }
    
 
@@ -2936,6 +2940,8 @@ parseStatement: true, parseSourceElement: true */
 			case 'struct':
                 return parseStructDeclaration();
              default:
+				if(Types[lookahead.value] != undefined )
+					return parseTypedStatement(lookahead.value,true);
                 break;
             }
         }
@@ -3097,6 +3103,7 @@ parseStatement: true, parseSourceElement: true */
         }
 
         tmp = parseParams(firstRestricted);
+        console.log(tmp);
         params = tmp.params;
         stricted = tmp.stricted;
         firstRestricted = tmp.firstRestricted;
@@ -3145,17 +3152,17 @@ parseStatement: true, parseSourceElement: true */
             message = tmp.message;
         }
 */
+		console.log(strict);
         previousStrict = strict;
         body = parseFunctionSourceElements();
-        if (strict && firstRestricted) {
+         if (strict && firstRestricted) {
             throwError(firstRestricted, message);
         }
         if (strict && stricted) {
             throwErrorTolerant(stricted, message);
         }
         strict = previousStrict;
-
-        return delegate.createStructDeclaration(id, params, [], body);
+		return delegate.createStructDeclaration(id, params, [], body);
     }
 
     function parseFunctionExpression() {
@@ -3271,6 +3278,7 @@ parseStatement: true, parseSourceElement: true */
         strict = false;
         peek();
         body = parseSourceElements();
+        Types = {};
         return delegate.createProgram(body);
     }
 
@@ -4020,6 +4028,7 @@ parseStatement: true, parseSourceElement: true */
         lineStart = 0;
         length = source.length;
         lookahead = null;
+        Types = {};
         state = {
             allowIn: true,
             labelSet: {},
