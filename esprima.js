@@ -124,6 +124,7 @@ parseStatement: true, parseSourceElement: true */
         ForInStatement: 'ForInStatement',
         FunctionDeclaration: 'FunctionDeclaration',
         FunctionExpression: 'FunctionExpression',
+        StructDeclaration: 'StructDeclaration',
         Identifier: 'Identifier',
         IfStatement: 'IfStatement',
         Literal: 'Literal',
@@ -308,10 +309,11 @@ parseStatement: true, parseSourceElement: true */
 
         switch (id.length) {
         case 2:
-            return (id === 'if') || (id === 'in') || (id === 'do');
+            return (id === 'if') || (id === 'in') || (id === 'do') || (id === 'u8') || (id === 's8');
         case 3:
             return (id === 'var') || (id === 'for') || (id === 'new') ||
-                (id === 'try') || (id === 'let');
+                (id === 'try') || (id === 'let') || (id === 'u32') || (id === 's32') || (id === 'u16') || (id === 's16');
+        
         case 4:
             return (id === 'this') || (id === 'else') || (id === 'case') ||
                 (id === 'void') || (id === 'with') || (id === 'enum');
@@ -321,7 +323,7 @@ parseStatement: true, parseSourceElement: true */
                 (id === 'class') || (id === 'super');
         case 6:
             return (id === 'return') || (id === 'typeof') || (id === 'delete') ||
-                (id === 'switch') || (id === 'export') || (id === 'import');
+                (id === 'switch') || (id === 'export') || (id === 'import') || (id === 'struct');
         case 7:
             return (id === 'default') || (id === 'finally') || (id === 'extends');
         case 8:
@@ -1306,6 +1308,18 @@ parseStatement: true, parseSourceElement: true */
         createFunctionDeclaration: function (id, params, defaults, body) {
             return {
                 type: Syntax.FunctionDeclaration,
+                id: id,
+                params: params,
+                defaults: defaults,
+                body: body,
+                rest: null,
+                generator: false,
+                expression: false
+            };
+        },
+         createStructDeclaration: function (id, params, defaults, body) {
+            return {
+                type: Syntax.StructDeclaration,
                 id: id,
                 params: params,
                 defaults: defaults,
@@ -2339,6 +2353,7 @@ parseStatement: true, parseSourceElement: true */
 
         return delegate.createVariableDeclarator(id, init);
     }
+    
 
     function parseVariableDeclarationList(kind) {
         var list = [];
@@ -2353,6 +2368,7 @@ parseStatement: true, parseSourceElement: true */
 
         return list;
     }
+   
 
     function parseVariableStatement() {
         var declarations;
@@ -2365,6 +2381,19 @@ parseStatement: true, parseSourceElement: true */
 
         return delegate.createVariableDeclaration(declarations, 'var');
     }
+    
+    function parseTypedStatement(type) {
+        var declarations;
+
+        expectKeyword(type);
+
+        declarations = parseVariableDeclarationList(type);
+
+        consumeSemicolon();
+
+        return delegate.createVariableDeclaration(declarations, type);
+    }
+   
 
     // kind may be `const` or `let`
     // Both are experimental and not in the specification yet.
@@ -2897,7 +2926,16 @@ parseStatement: true, parseSourceElement: true */
                 return parseWhileStatement();
             case 'with':
                 return parseWithStatement();
-            default:
+            case 's32':
+            case 'u32':
+            case 's16':
+            case 'u16':
+            case 's8':
+            case 'u8':
+				return parseTypedStatement(lookahead.value);
+			case 'struct':
+                return parseStructDeclaration();
+             default:
                 break;
             }
         }
@@ -3079,6 +3117,47 @@ parseStatement: true, parseSourceElement: true */
         return delegate.createFunctionDeclaration(id, params, [], body);
     }
 
+	function parseStructDeclaration() {
+        var id, params = [], body, token, stricted, tmp, firstRestricted, message, previousStrict;
+
+        expectKeyword('struct');
+        token = lookahead;
+        id = parseVariableIdentifier();
+        if (strict) {
+            if (isRestrictedWord(token.value)) {
+                throwErrorTolerant(token, Messages.StrictFunctionName);
+            }
+        } else {
+            if (isRestrictedWord(token.value)) {
+                firstRestricted = token;
+                message = Messages.StrictFunctionName;
+            } else if (isStrictModeReservedWord(token.value)) {
+                firstRestricted = token;
+                message = Messages.StrictReservedWord;
+            }
+        }
+/*
+        tmp = parseParams(firstRestricted);
+        params = tmp.params;
+        stricted = tmp.stricted;
+        firstRestricted = tmp.firstRestricted;
+        if (tmp.message) {
+            message = tmp.message;
+        }
+*/
+        previousStrict = strict;
+        body = parseFunctionSourceElements();
+        if (strict && firstRestricted) {
+            throwError(firstRestricted, message);
+        }
+        if (strict && stricted) {
+            throwErrorTolerant(stricted, message);
+        }
+        strict = previousStrict;
+
+        return delegate.createStructDeclaration(id, params, [], body);
+    }
+
     function parseFunctionExpression() {
         var token, id = null, stricted, firstRestricted, message, tmp, params = [], body, previousStrict;
 
@@ -3130,6 +3209,12 @@ parseStatement: true, parseSourceElement: true */
             switch (lookahead.value) {
             case 'const':
             case 'let':
+            case 's32':
+            case 'u32':
+            case 's16':
+            case 'u16':
+            case 's8':
+            case 'u8':
                 return parseConstLetDeclaration(lookahead.value);
             case 'function':
                 return parseFunctionDeclaration();
